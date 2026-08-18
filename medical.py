@@ -1,27 +1,39 @@
 import os
 from dotenv import load_dotenv
 import streamlit as st
-from google import genai
-from google.genai import types
-from io import BytesIO
-from PIL import Image
-import base64
+from openai import OpenAI
+import requests
+from urllib.parse import quote
 
 # Load API key from .env
 load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY")
-if not api_key:
-    st.error("Missing GOOGLE_API_KEY in .env")
+groq_api_key = os.getenv("GROQ_API_KEY")
+if not groq_api_key:
+    st.error("Missing GROQ_API_KEY in .env (or in Render's Environment tab)")
     st.stop()
 
-# Initialize Gemini client
-client = genai.Client(api_key=api_key)
+# Groq is OpenAI SDK-compatible: same client, different base_url
+client = OpenAI(api_key=groq_api_key, base_url="https://api.groq.com/openai/v1")
 
-# --- Model names (update this section as Google rotates models) ---
-TEXT_MODEL = "gemini-2.5-flash"
-IMAGE_MODEL = "gemini-2.5-flash-image"
-# gemini-2.5-flash is scheduled to shut down Oct 16, 2026 -> migrate to gemini-3.5-flash before then
-# gemini-2.5-flash-image is scheduled to shut down Oct 2, 2026 -> migrate to gemini-3.1-flash-image-preview before then
+# --- Model / provider config ---
+TEXT_MODEL = "llama-3.3-70b-versatile"   # free on Groq, no credit card needed
+IMAGE_BASE_URL = "https://image.pollinations.ai/prompt/"  # free, no API key needed
+
+
+def generate_text(prompt: str) -> str:
+    response = client.chat.completions.create(
+        model=TEXT_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content
+
+
+def generate_image(prompt: str) -> bytes:
+    url = IMAGE_BASE_URL + quote(prompt)
+    resp = requests.get(url, timeout=60)
+    resp.raise_for_status()
+    return resp.content
+
 
 # Streamlit page config
 st.set_page_config(page_title="Medical Information Agent", page_icon="🩺")
@@ -67,11 +79,7 @@ with tab1:
 
         with st.spinner("Generating response..."):
             try:
-                text_response = client.models.generate_content(
-                    model=TEXT_MODEL,
-                    contents=[text_prompt]
-                )
-                response_text = text_response.text
+                response_text = generate_text(text_prompt)
                 st.session_state.chat_history.append(("assistant", response_text))
             except Exception as e:
                 response_text = f"Error generating medical info: {e}"
@@ -90,25 +98,9 @@ with tab1:
 
         with st.spinner("Generating nutrition image..."):
             try:
-                nutrition_response = client.models.generate_content(
-                    model=IMAGE_MODEL,
-                    contents=nutrition_prompt,
-                    config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
-                )
-                img_bytes = next(
-                    (part.inline_data.data for part in nutrition_response.candidates[0].content.parts if part.inline_data and part.inline_data.data),
-                    None
-                )
-                if img_bytes:
-                    img = Image.open(BytesIO(img_bytes))
-                    buffered = BytesIO()
-                    img.save(buffered, format="PNG")
-                    img_str = base64.b64encode(buffered.getvalue()).decode()
-
-                    st.markdown("<h4 style='text-align:center;'>Nutrition Suggestion</h4>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='text-align:center;'><img src='data:image/png;base64,{img_str}' style='max-width:100%; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.2);'/></div>", unsafe_allow_html=True)
-                else:
-                    st.warning("No nutrition image received.")
+                img_bytes = generate_image(nutrition_prompt)
+                st.markdown("<h4 style='text-align:center;'>Nutrition Suggestion</h4>", unsafe_allow_html=True)
+                st.image(img_bytes, use_container_width=True)
             except Exception as e:
                 st.error(f"Nutrition image error: {e}")
 
@@ -118,25 +110,9 @@ with tab1:
 
         with st.spinner("Generating medicine image..."):
             try:
-                med_response = client.models.generate_content(
-                    model=IMAGE_MODEL,
-                    contents=medicine_prompt,
-                    config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
-                )
-                med_img_bytes = next(
-                    (part.inline_data.data for part in med_response.candidates[0].content.parts if part.inline_data and part.inline_data.data),
-                    None
-                )
-                if med_img_bytes:
-                    med_img = Image.open(BytesIO(med_img_bytes))
-                    buffered = BytesIO()
-                    med_img.save(buffered, format="PNG")
-                    med_img_str = base64.b64encode(buffered.getvalue()).decode()
-
-                    st.markdown("<h4 style='text-align:center;'>Medicine Reference</h4>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='text-align:center;'><img src='data:image/png;base64,{med_img_str}' style='max-width:100%; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.2);'/></div>", unsafe_allow_html=True)
-                else:
-                    st.warning("No medicine image received.")
+                med_img_bytes = generate_image(medicine_prompt)
+                st.markdown("<h4 style='text-align:center;'>Medicine Reference</h4>", unsafe_allow_html=True)
+                st.image(med_img_bytes, use_container_width=True)
             except Exception as e:
                 st.error(f"Medicine image error: {e}")
 
@@ -160,11 +136,7 @@ with tab2:
 
         with st.spinner("Generating disease information..."):
             try:
-                response = client.models.generate_content(
-                    model=TEXT_MODEL,
-                    contents=[disease_prompt]
-                )
-                st.markdown(response.text)
+                st.markdown(generate_text(disease_prompt))
             except Exception as e:
                 st.error(f"Error generating disease info: {e}")
 
@@ -172,25 +144,9 @@ with tab2:
         nutrition_prompt = f"Photorealistic nutrition plate for a person with {disease_name}, based on WHO/Mayo Clinic dietary guidance. Age: {age}, Gender: {gender}."
         with st.spinner("Generating nutrition image..."):
             try:
-                img_response = client.models.generate_content(
-                    model=IMAGE_MODEL,
-                    contents=nutrition_prompt,
-                    config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
-                )
-                img_bytes = next(
-                    (part.inline_data.data for part in img_response.candidates[0].content.parts if part.inline_data and part.inline_data.data),
-                    None
-                )
-                if img_bytes:
-                    img = Image.open(BytesIO(img_bytes))
-                    buffered = BytesIO()
-                    img.save(buffered, format="PNG")
-                    img_str = base64.b64encode(buffered.getvalue()).decode()
-
-                    st.markdown("<h4 style='text-align:center;'>Nutrition Suggestion</h4>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='text-align:center;'><img src='data:image/png;base64,{img_str}' style='max-width:100%; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.2);'/></div>", unsafe_allow_html=True)
-                else:
-                    st.warning("No nutrition image received.")
+                img_bytes = generate_image(nutrition_prompt)
+                st.markdown("<h4 style='text-align:center;'>Nutrition Suggestion</h4>", unsafe_allow_html=True)
+                st.image(img_bytes, use_container_width=True)
             except Exception as e:
                 st.error(f"Nutrition image error: {e}")
 
@@ -198,27 +154,11 @@ with tab2:
         medicine_prompt = f"High-resolution image of common medicines or treatment kits for {disease_name}, recommended by WHO or Mayo Clinic. White background."
         with st.spinner("Generating medicine image..."):
             try:
-                med_response = client.models.generate_content(
-                    model=IMAGE_MODEL,
-                    contents=medicine_prompt,
-                    config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
-                )
-                med_img_bytes = next(
-                    (part.inline_data.data for part in med_response.candidates[0].content.parts if part.inline_data and part.inline_data.data),
-                    None
-                )
-                if med_img_bytes:
-                    med_img = Image.open(BytesIO(med_img_bytes))
-                    buffered = BytesIO()
-                    med_img.save(buffered, format="PNG")
-                    med_img_str = base64.b64encode(buffered.getvalue()).decode()
-
-                    st.markdown("<h4 style='text-align:center;'>Medicine Reference</h4>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='text-align:center;'><img src='data:image/png;base64,{med_img_str}' style='max-width:100%; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.2);'/></div>", unsafe_allow_html=True)
-                else:
-                    st.warning("No medicine image received.")
+                med_img_bytes = generate_image(medicine_prompt)
+                st.markdown("<h4 style='text-align:center;'>Medicine Reference</h4>", unsafe_allow_html=True)
+                st.image(med_img_bytes, use_container_width=True)
             except Exception as e:
                 st.error(f"Medicine image error: {e}")
 
 # Footer
-st.markdown("<footer style='text-align:center; margin-top:3rem;'>Powered by Gemini 2.5 Flash & Gemini Image API</footer>", unsafe_allow_html=True)
+st.markdown("<footer style='text-align:center; margin-top:3rem;'>Powered by Groq (Llama 3.3) & Pollinations Image API</footer>", unsafe_allow_html=True)
