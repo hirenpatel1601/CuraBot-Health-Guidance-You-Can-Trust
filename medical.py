@@ -1,4 +1,3 @@
-
 import os
 from dotenv import load_dotenv
 import streamlit as st
@@ -86,8 +85,8 @@ with tab1:
                 response_text = f"Error generating medical info: {e}"
                 st.session_state.chat_history.append(("assistant", response_text))
 
-    # Display chat history
-    for role, msg in st.session_state.chat_history:
+    # Display chat history (newest first)
+    for role, msg in reversed(st.session_state.chat_history):
         if role == "user":
             st.chat_message("user").write(msg)
         else:
