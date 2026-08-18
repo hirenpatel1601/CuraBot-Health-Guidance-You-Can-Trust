@@ -6,7 +6,8 @@ import requests
 from urllib.parse import quote
 
 # Load API key from .env
-load_dotenv()import os
+load_dotenv()
+import os
 from dotenv import load_dotenv
 import streamlit as st
 from openai import OpenAI
