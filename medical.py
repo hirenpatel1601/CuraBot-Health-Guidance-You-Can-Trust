@@ -17,6 +17,12 @@ if not api_key:
 # Initialize Gemini client
 client = genai.Client(api_key=api_key)
 
+# --- Model names (update this section as Google rotates models) ---
+TEXT_MODEL = "gemini-2.5-flash"
+IMAGE_MODEL = "gemini-2.5-flash-image"
+# gemini-2.5-flash is scheduled to shut down Oct 16, 2026 -> migrate to gemini-3.5-flash before then
+# gemini-2.5-flash-image is scheduled to shut down Oct 2, 2026 -> migrate to gemini-3.1-flash-image-preview before then
+
 # Streamlit page config
 st.set_page_config(page_title="Medical Information Agent", page_icon="🩺")
 st.title("🩺 AI Medical Information Agent")
@@ -62,7 +68,7 @@ with tab1:
         with st.spinner("Generating response..."):
             try:
                 text_response = client.models.generate_content(
-                    model="gemini-2.5-flash-preview-05-20",
+                    model=TEXT_MODEL,
                     contents=[text_prompt]
                 )
                 response_text = text_response.text
@@ -85,7 +91,7 @@ with tab1:
         with st.spinner("Generating nutrition image..."):
             try:
                 nutrition_response = client.models.generate_content(
-                    model="gemini-2.0-flash-preview-image-generation",
+                    model=IMAGE_MODEL,
                     contents=nutrition_prompt,
                     config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
                 )
@@ -113,7 +119,7 @@ with tab1:
         with st.spinner("Generating medicine image..."):
             try:
                 med_response = client.models.generate_content(
-                    model="gemini-2.0-flash-preview-image-generation",
+                    model=IMAGE_MODEL,
                     contents=medicine_prompt,
                     config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
                 )
@@ -155,7 +161,7 @@ with tab2:
         with st.spinner("Generating disease information..."):
             try:
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash-preview-05-20",
+                    model=TEXT_MODEL,
                     contents=[disease_prompt]
                 )
                 st.markdown(response.text)
@@ -167,7 +173,7 @@ with tab2:
         with st.spinner("Generating nutrition image..."):
             try:
                 img_response = client.models.generate_content(
-                    model="gemini-2.0-flash-preview-image-generation",
+                    model=IMAGE_MODEL,
                     contents=nutrition_prompt,
                     config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
                 )
@@ -193,7 +199,7 @@ with tab2:
         with st.spinner("Generating medicine image..."):
             try:
                 med_response = client.models.generate_content(
-                    model="gemini-2.0-flash-preview-image-generation",
+                    model=IMAGE_MODEL,
                     contents=medicine_prompt,
                     config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"])
                 )
